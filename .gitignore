@@ -39,3 +39,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# Python virtual environment and cache
+.venv-ai/
+__pycache__/
+*.py[cod]
+
+# Local backup files
+app/*_backup.txt
+
+# Local demo and sample files
+tools/realesrgan/input.jpg
+tools/realesrgan/input2.jpg
+tools/realesrgan/onepiece_demo.mp4
+
+# Backup pages
+app/sign-in/page_backup.tsx
+app/sign-up/page_backup.tsx
