@@ -28,27 +28,34 @@ export default function RestorePage() {
   const comparisonRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
+  // Release temporary preview URLs when they are replaced or the page unmounts.
   useEffect(() => {
     return () => {
       if (image) URL.revokeObjectURL(image);
+    };
+  }, [image]);
+
+  useEffect(() => {
+    return () => {
       if (resultImage) URL.revokeObjectURL(resultImage);
     };
-  }, [image, resultImage]);
+  }, [resultImage]);
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
 
     if (!file) return;
 
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setError("Please select a JPG, PNG, or WebP image.");
-      event.target.value = "";
+      input.value = "";
       return;
     }
 
     if (file.size > 15 * 1024 * 1024) {
       setError("Please choose an image smaller than 15 MB.");
-      event.target.value = "";
+      input.value = "";
       return;
     }
 
@@ -103,12 +110,10 @@ export default function RestorePage() {
         throw new Error("The AI backend did not return a valid image.");
       }
 
-      // Display the enhanced result immediately.
-      const resultUrl = URL.createObjectURL(blob);
-      setResultImage(resultUrl);
+      // Display the enhanced image before attempting to save its history.
+      setResultImage(URL.createObjectURL(blob));
       setComparison(50);
 
-      // A signed-in user can save the result and its history.
       if (!userId) {
         setHistoryMessage(
           "Image enhanced successfully. Sign in to save your history."
@@ -119,10 +124,9 @@ export default function RestorePage() {
       let storagePath: string | null = null;
 
       try {
-        // Create a unique file path inside this user's Storage folder.
         storagePath = `${userId}/${crypto.randomUUID()}.png`;
 
-        // Upload the actual enhanced image to private Supabase Storage.
+        // Save the actual enhanced image to private Supabase Storage.
         const { error: uploadError } = await supabase.storage
           .from("kraz-images")
           .upload(storagePath, blob, {
@@ -134,7 +138,7 @@ export default function RestorePage() {
           throw uploadError;
         }
 
-        // Store the uploaded image's path in the history table.
+        // Record the result in the image history table.
         const { error: historyError } = await supabase
           .from("image_history")
           .insert({
@@ -145,7 +149,6 @@ export default function RestorePage() {
           });
 
         if (historyError) {
-          // Remove the uploaded file if the history insert fails.
           const { error: cleanupError } = await supabase.storage
             .from("kraz-images")
             .remove([storagePath]);
@@ -189,6 +192,7 @@ export default function RestorePage() {
     setError("");
     setHistoryMessage("");
     setComparison(50);
+    draggingRef.current = false;
 
     const input = document.getElementById(
       "image-upload"
@@ -257,7 +261,8 @@ export default function RestorePage() {
 
           <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-400 sm:text-base">
             Enhance image details and upscale your photos with KRAZ&apos;s
-            local AI engine. Your images stay on your computer.
+            local AI engine. Your images stay on your computer unless you
+            choose to save the enhanced result to your account.
           </p>
         </div>
 
@@ -376,8 +381,9 @@ export default function RestorePage() {
                 </h2>
 
                 <p className="mt-3 text-sm text-slate-400">
-                  Drag the glowing divider to compare your original with
-                  the enhanced result.
+                  Drag the glowing divider to compare your original with the
+                  enhanced result. You can also use the left and right arrow
+                  keys when the divider is focused.
                 </p>
               </div>
 

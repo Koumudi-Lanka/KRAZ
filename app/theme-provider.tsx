@@ -25,27 +25,30 @@ export function ThemeProvider({
   children: React.ReactNode;
 }) {
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("kraz-theme");
 
-    if (savedTheme === "light" || savedTheme === "dark") {
-      setThemeState(savedTheme);
+    const initialTheme: Theme =
+      savedTheme === "light" || savedTheme === "dark"
+        ? savedTheme
+        : "dark";
+
+    document.documentElement.dataset.theme = initialTheme;
+
+    if (initialTheme !== "dark") {
+      const frame = window.requestAnimationFrame(() => {
+        setThemeState(initialTheme);
+      });
+
+      return () => window.cancelAnimationFrame(frame);
     }
-
-    setReady(true);
   }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("kraz-theme", theme);
-  }, [theme, ready]);
 
   function setTheme(nextTheme: Theme) {
     setThemeState(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem("kraz-theme", nextTheme);
   }
 
   return (

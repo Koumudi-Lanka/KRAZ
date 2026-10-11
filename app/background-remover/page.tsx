@@ -1,6 +1,8 @@
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useSupabase } from "../../lib/use-supabase";
 
@@ -16,7 +18,7 @@ export default function BackgroundRemoverPage() {
   const [error, setError] = useState("");
   const [historyMessage, setHistoryMessage] = useState("");
 
-  // Release temporary browser image URLs when they are replaced or the page unmounts.
+  // Release temporary browser image URLs when replaced or unmounted.
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview);
@@ -101,7 +103,7 @@ export default function BackgroundRemoverPage() {
         );
       }
 
-      // Display the result immediately, even if saving to history fails.
+      // Show the result even if saving it to history fails.
       setResult(URL.createObjectURL(imageBlob));
 
       if (!userId) {
@@ -111,11 +113,9 @@ export default function BackgroundRemoverPage() {
         return;
       }
 
-      let storagePath: string | null = null;
+      const storagePath = `${userId}/${crypto.randomUUID()}.png`;
 
       try {
-        storagePath = `${userId}/${crypto.randomUUID()}.png`;
-
         const { error: uploadError } = await supabase.storage
           .from("kraz-images")
           .upload(storagePath, imageBlob, {
@@ -192,16 +192,16 @@ export default function BackgroundRemoverPage() {
   return (
     <main className="min-h-screen bg-[#0b0912] text-white">
       <nav className="flex items-center justify-between border-b border-white/10 px-6 py-5 md:px-12">
-        <a href="/" className="text-2xl font-black tracking-tight">
+        <Link href="/" className="text-2xl font-black tracking-tight">
           KRAZ<span className="text-violet-400">.</span>
-        </a>
+        </Link>
 
-        <a
+        <Link
           href="/restore"
           className="rounded-full border border-white/15 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10"
         >
           Image Enhancer
-        </a>
+        </Link>
       </nav>
 
       <section className="mx-auto max-w-6xl px-5 py-14 md:py-20">
