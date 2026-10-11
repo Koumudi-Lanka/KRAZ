@@ -68,13 +68,15 @@ export default function BackgroundRemoverPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/remove-background",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      // Use the environment variable for local or hosted deployment.
+      const aiApiUrl = (
+        process.env.NEXT_PUBLIC_AI_API_URL || "http://127.0.0.1:8000"
+      ).replace(/\/+$/, "");
+
+      const response = await fetch(`${aiApiUrl}/remove-background`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         let message = "Background removal failed. Please try again.";
@@ -278,8 +280,7 @@ export default function BackgroundRemoverPage() {
                     backgroundImage:
                       "linear-gradient(45deg,#d8d8df 25%,transparent 25%),linear-gradient(-45deg,#d8d8df 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d8d8df 75%),linear-gradient(-45deg,transparent 75%,#d8d8df 75%)",
                     backgroundSize: "24px 24px",
-                    backgroundPosition:
-                      "0 0, 0 12px, 12px -12px, -12px 0px",
+                    backgroundPosition: "0 0, 0 12px, 12px -12px, -12px 0px",
                   }}
                 >
                   {result ? (
@@ -373,8 +374,7 @@ export default function BackgroundRemoverPage() {
         </div>
 
         <p className="mt-7 text-center text-xs text-gray-500">
-          Powered by your local KRAZ AI backend · Images are processed on your
-          machine
+          Powered by your KRAZ AI backend.
         </p>
       </section>
     </main>

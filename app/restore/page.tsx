@@ -80,7 +80,13 @@ export default function RestorePage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("http://127.0.0.1:8000/enhance", {
+      // Configure this URL in .env.local for local development
+      // and in your hosting dashboard for production.
+      const aiApiUrl = (
+        process.env.NEXT_PUBLIC_AI_API_URL || "http://127.0.0.1:8000"
+      ).replace(/\/+$/, "");
+
+      const response = await fetch(`${aiApiUrl}/enhance`, {
         method: "POST",
         body: formData,
       });
@@ -121,12 +127,10 @@ export default function RestorePage() {
         return;
       }
 
-      let storagePath: string | null = null;
+      const storagePath = `${userId}/${crypto.randomUUID()}.png`;
 
       try {
-        storagePath = `${userId}/${crypto.randomUUID()}.png`;
-
-        // Save the actual enhanced image to private Supabase Storage.
+        // Save the actual enhanced image to Supabase Storage.
         const { error: uploadError } = await supabase.storage
           .from("kraz-images")
           .upload(storagePath, blob, {
@@ -177,7 +181,7 @@ export default function RestorePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Could not connect to the local AI backend."
+          : "Could not connect to the KRAZ AI backend."
       );
     } finally {
       setIsProcessing(false);
@@ -185,6 +189,8 @@ export default function RestorePage() {
   }
 
   function removeImage() {
+    if (isProcessing) return;
+
     setImage(null);
     setFileName("");
     setSelectedFile(null);
@@ -260,9 +266,9 @@ export default function RestorePage() {
           </h1>
 
           <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-400 sm:text-base">
-            Enhance image details and upscale your photos with KRAZ&apos;s
-            local AI engine. Your images stay on your computer unless you
-            choose to save the enhanced result to your account.
+            Enhance image details and upscale your photos with KRAZ&apos;s AI
+            engine. Your images are sent to the configured AI backend for
+            processing.
           </p>
         </div>
 
@@ -344,7 +350,8 @@ export default function RestorePage() {
 
           {isProcessing && (
             <p className="mt-4 animate-pulse text-center text-sm text-violet-300">
-              Your local AI engine is working. Large images may take longer.
+              Your AI engine is processing the image. Larger images may take
+              longer.
             </p>
           )}
 
@@ -381,9 +388,9 @@ export default function RestorePage() {
                 </h2>
 
                 <p className="mt-3 text-sm text-slate-400">
-                  Drag the glowing divider to compare your original with the
-                  enhanced result. You can also use the left and right arrow
-                  keys when the divider is focused.
+                  Drag the divider to compare your original and enhanced
+                  images. You can also focus the divider and use the left and
+                  right arrow keys.
                 </p>
               </div>
 
@@ -492,12 +499,12 @@ export default function RestorePage() {
           )}
 
           <p className="mt-6 text-center text-xs leading-6 text-slate-500">
-            Powered by your local Real-ESRGAN engine. No paid AI API required.
+            Powered by your configured KRAZ image-enhancement backend.
           </p>
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-600">
-          KRAZ · Your photos, enhanced locally.
+          KRAZ · Your photos, enhanced with AI.
         </p>
       </section>
     </main>
