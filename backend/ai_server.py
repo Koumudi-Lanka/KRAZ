@@ -5,18 +5,22 @@ import os
 import platform
 import subprocess
 import tempfile
+import threading
+
+# Limit common numerical-library thread counts before importing rembg.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from PIL import Image, UnidentifiedImageError
-from rembg import remove
+from PIL import Image, ImageOps, UnidentifiedImageError
+from rembg import new_session, remove
 
 
 # --------------------------------------------------
 # PATHS
-# backend/ai_server.py is inside the backend folder.
-# The AI models and tools are in the project root.
 # --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,9 +43,6 @@ REALESRGAN_EXE = Path(
 
 app = FastAPI(title="KRAZ AI Image Tools", version="1.0.0")
 
-
-# Add local development and deployed frontend origins.
-# Additional origins can be configured using CORS_ORIGINS.
 allowed_origins = [
     "http://localhost:3000",
     "https://kraz.vercel.app",
@@ -64,6 +65,51 @@ app.add_middleware(
 
 
 # --------------------------------------------------
+# BACKGROUND-REMOVAL MODEL
+# --------------------------------------------------
+
+REMBG_MODEL_NAME = "u2netp"
+MAX_PROCESSING_DIMENSION = 1024
+
+_rembg_session = None
+_rembg_lock = threading.Lock()
+
+
+def get_rembg_session():
+    """Load the lightweight model once and reuse it."""
+    global _rembg_session
+
+    if _rembg_session is None:
+        _rembg_session = new_session(REMBG_MODEL_NAME)
+
+    return _rembg_session
+
+
+def prepare_image_for_removal(data: bytes) -> bytes:
+    """Resize the image before inference to reduce memory use."""
+    try:
+        with Image.open(io.BytesIO(data)) as original:
+            image = ImageOps.exif_transpose(original)
+            image.thumbnail(
+                (MAX_PROCESSING_DIMENSION, MAX_PROCESSING_DIMENSION),
+                Image.Resampling.LANCZOS,
+            )
+
+            # Use RGB input for predictable processing.
+            image = image.convert("RGB")
+
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            return buffer.getvalue()
+
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not prepare this image. Try another JPG, PNG, or WebP.",
+        ) from exc
+
+
+# --------------------------------------------------
 # HEALTH CHECK
 # --------------------------------------------------
 
@@ -74,6 +120,8 @@ def health_check():
         "message": "KRAZ AI backend is running",
         "enhancement_executable_found": REALESRGAN_EXE.is_file(),
         "models_folder_found": MODEL_DIR.is_dir(),
+        "background_removal_model": REMBG_MODEL_NAME,
+        "max_processing_dimension": MAX_PROCESSING_DIMENSION,
     }
 
 
@@ -190,18 +238,18 @@ async def enhance_image(file: UploadFile = File(...)):
                 check=False,
             )
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             raise HTTPException(
                 status_code=504,
                 detail="Enhancement timed out. Try a smaller image.",
-            )
+            ) from exc
 
         except OSError as exc:
             print("Real-ESRGAN launch error:", repr(exc))
             raise HTTPException(
                 status_code=503,
                 detail="The image enhancement engine could not start.",
-            )
+            ) from exc
 
         if result.returncode != 0 or not output_path.is_file():
             print("Real-ESRGAN error:", result.stderr, result.stdout)
@@ -216,9 +264,7 @@ async def enhance_image(file: UploadFile = File(...)):
         content=enhanced_bytes,
         media_type="image/png",
         headers={
-            "Content-Disposition": (
-                'inline; filename="kraz-enhanced.png"'
-            )
+            "Content-Disposition": 'inline; filename="kraz-enhanced.png"'
         },
     )
 
@@ -230,9 +276,13 @@ async def enhance_image(file: UploadFile = File(...)):
 @app.post("/remove-background")
 async def remove_background(file: UploadFile = File(...)):
     data, _ = await read_valid_image(file)
+    prepared_data = prepare_image_for_removal(data)
 
     try:
-        result = remove(data)
+        # Keep inference serialized to avoid simultaneous model workloads.
+        with _rembg_lock:
+            session = get_rembg_session()
+            result = remove(prepared_data, session=session)
 
         with Image.open(io.BytesIO(result)) as output_image:
             output_image.load()
@@ -242,12 +292,15 @@ async def remove_background(file: UploadFile = File(...)):
             transparent_image.save(output_buffer, format="PNG")
             png_bytes = output_buffer.getvalue()
 
+    except HTTPException:
+        raise
+
     except Exception as exc:
         print("Background removal error:", repr(exc))
         raise HTTPException(
             status_code=500,
             detail="Background removal failed.",
-        )
+        ) from exc
 
     return Response(
         content=png_bytes,
